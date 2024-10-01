@@ -543,3 +543,159 @@ class FlowController(FlowMeter):
         if value != reg:
             raise OSError("Could not set control point.")
         self.control_point = point
+
+class MassFlowController(FlowMeter):
+    """Python driver for Alicat CODA Flow Controllers.
+
+    [Reference](http://www.alicat.com/products/mass-flow-meters-and-
+    controllers/mass-flow-controllers/).
+
+    This communicates with the flow controller over a USB or RS-232/RS-485
+    connection using pyserial.
+
+    To set up your Alicat mass flow controller, power on the device and make sure
+    that the "Input" option is set to "Serial".
+    """
+
+
+    def __init__(self, address: str='/dev/ttyUSB0', unit: str='A', **kwargs: Any) -> None:
+        """Connect this driver with the appropriate USB / serial port.
+
+        Args:
+            address: The serial port or TCP address:port. Default '/dev/ttyUSB0'.
+            unit: The Alicat-specified unit ID, A-Z. Default 'A'.
+        """
+        FlowMeter.__init__(self, address, unit, **kwargs)
+        self.control_point = None
+        
+
+    async def _write_and_read(self, command: str) -> str | None:
+        """Wrap the communicator request.
+
+       
+        """
+        self._test_controller_open()
+        return await self.hw._write_and_read(command)
+    
+           
+    async def set_gas_nitrogen(self) -> None:   #CODA
+        """Set the gas type to Nitrogen."""
+    
+        command = f'{self.unit}CFG GASID 8'
+        line = await self._write_and_read(command)
+        
+        if line == '?':
+            raise OSError("Unable to tare flow.")
+        
+    async def tare_mass_flowrate(self) -> None:
+        """Tare mass flow."""
+        command = f'{self.unit}V'
+        line = await self._write_and_read(command)
+
+        if line == '?':
+            raise OSError("Unable to tare flow.")  
+            
+
+    async def get_totalizer_batch_mass(self, batch: int = 1) -> str:
+        """Get the totalizer batch volume.
+
+        Returns:
+            line: Current value of totalizer batch
+        """
+        command = f'{self.unit}TB {batch}'
+        line = await self._write_and_read(command)
+        
+        if line == '?':
+            raise OSError("Unable to read totalizer batch volume.")
+        else:
+            values = line.split(" ")  # type: ignore[union-attr]
+            return f'{values[1]} {values[2]}' # returns 'batch vol' 'units'
+
+    async def set_totalizer_batch_mass(self, batch_mass: float, batch: int = 1) -> None:
+        """Set the totalizer batch mass.
+            
+        """
+        command = f'{self.unit}TB {batch} {batch_mass}'
+        line = await self._write_and_read(command)
+    
+        if line == '?':
+            raise OSError("Unable to set totalizer batch volume. Check if volume is out of range for device.")
+        
+    async def reset_totaliser(self) -> None:
+        """Reset the totalizer.
+                """
+        command = f'{self.unit}T'
+        line= await self._write_and_read(command)
+        
+        if line == '?':
+            raise OSError("Unable to reset totaliser")
+        
+
+    async def hold_closed(self) -> None:
+        """hold the valve closed
+                """
+        command = f'{self.unit}HC'
+        await self._write_and_read(command)
+
+    async def cancel_clear(self) -> None:
+        """Cancel valve hold and resume closed loop control."""
+        command = f'{self.unit}C'
+        await self._write_and_read(command)
+
+    async def set_flow_setpoint(self, setpoint: float) -> None:
+        """Set the target setpoint for mass flow rate.
+        
+        """
+        command = f'{self.unit}S {setpoint:.2f}'
+        line = await self._write_and_read(command)
+        
+    async def zero_flow_setpoint(self) -> None:
+        """Set the mass flow rate to zero.
+        
+        """
+        command = f'{self.unit}S {0:.2f}'
+        line = await self._write_and_read(command)
+        
+    async def get_state(self) -> None:   
+        
+        """Get the state of the totaliser
+            
+        """
+        command = f'{self.unit}'
+        line = await self._write_and_read(command)
+        
+        
+        if line == '?':
+            raise OSError("Unable to set totalizer batch volume. Check if volume is out of range for device.")
+        
+        values = line.split()
+    
+        if len(values) < 7:
+            raise ValueError("Unexpected response format.")
+        
+        # Extract specific values from the response
+        temperature = values[1]
+        mass_flow_rate = values[2]
+        setpoint = values[3]
+        total_flow = values[4]
+        total_time = values[5]
+        totalizer_batch_remaining = values[6]
+        valve_drive = values[7]
+        status_codes = values[8] if len(values) > 8 else None
+        
+
+    
+       
+        return {
+        #"device": device,
+        "temperature": temperature,
+        "mass_flow_rate": mass_flow_rate,
+        "setpoint": setpoint,
+        "total_mass": total_flow,
+        "total_time": total_time,
+        "mass_remaining": totalizer_batch_remaining,
+        "valve_drive": valve_drive,
+        "status_codes": status_codes,
+        #"status_descriptions": status_descriptions_list
+        }
+               
