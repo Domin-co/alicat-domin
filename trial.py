@@ -5,6 +5,7 @@ import time
 
 
 async def get():
+    flow_controller: MassFlowController  # Explicit type hint
 
     async with MassFlowController(address = 'COM3',unit='A') as flow_controller:
         
@@ -17,6 +18,10 @@ async def get():
         
         await flow_controller.reset_totaliser()
         
+        await flow_controller.cancel_clear()
+        
+              
+                
         await flow_controller.set_flow_setpoint(200)
         
         start_time = time.time()

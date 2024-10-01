@@ -5,7 +5,7 @@ with open('README.md') as in_file:
     long_description = in_file.read()
 
 setup(
-    name="alicat",
+    name="alicat-domin",
     version="0.6.2",
     description="Python driver for Alicat mass flow controllers.",
     long_description=long_description,
