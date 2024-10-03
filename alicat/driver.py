@@ -682,7 +682,17 @@ class MassFlowController(FlowMeter):
         for stat in FrameParameters if parameter_value & stat.value
         ]
         
-
+    async def check_enabled_metrics(self):
+        await self.get_data_frame_metrics()
+        if not any(metric['name'] == FrameParameters.TOTALIZER_BATCH_REMAINING.name for metric in self.enabled_metrics):
+            raise ValueError("TOTALIZER_BATCH_REMAINING is not in enabled metrics, run setup_totaliser() first")
+        
+    
+    async def initialize_batch(self, batch_mass, mass_flow_rate):
+        await self.send_command(Command.CANCEL_CLEAR_VALVE)
+        await self.send_command(Command.SET_TOTALIZER_BATCH, batch_mass)
+        await self.send_command(Command.RESET_TOTALIZER)
+        await self.send_command(Command.SET_MASS_FLOW_SETPOINT, mass_flow_rate)
 
 class FrameParameters(Enum):
     DENSITY = (1, 'kg/m^3')

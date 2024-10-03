@@ -66,45 +66,36 @@ async def tare_totaliser():
             line=await flow_controller.get_state()
             print(f'Mass Flow Rate: {line.get(FrameParameters.MASS_FLOW_RATE.name)}')
             print(f'Valve Drive: {line.get(FrameParameters.VALVE_DRIVE.name)}')
+            
+
            
+async def monitor_batch(flow_controller, batch_mass):
+    start_time = time.time()
+    
+    while time.time() < start_time + 10:
+        state = await flow_controller.get_state()
         
+        print(f'Mass Flow Rate: {state.get(FrameParameters.MASS_FLOW_RATE.name)}, '
+              f'Valve Drive: {state.get(FrameParameters.VALVE_DRIVE.name)}, '
+              f'Total Mass: {state.get(FrameParameters.TOTAL_MASS.name)}, '
+              f'Totaliser Batch Remaining: {state.get(FrameParameters.TOTALIZER_BATCH_REMAINING.name)}')
         
-async def test_batch(batch_mass: float = 0.1):
+        if state.get(FrameParameters.TOTALIZER_BATCH_REMAINING.name) == '0.0g':
+            batch_time = round(time.time() - start_time, 2)
+            time.sleep(0.1)
+            state = await flow_controller.get_state()
+            measured_mass = state.get(FrameParameters.TOTAL_MASS.name)
+            print(f'Batch of {measured_mass} out of {batch_mass}g complete in {batch_time}s')
+            break
+    
+    await flow_controller.send_command(Command.SET_MASS_FLOW_SETPOINT, 0)        
+        
+async def test_batch(batch_mass: float = 0.1, mass_flow_rate: float = 500):
     flow_controller: MassFlowController  # Explicit type hint
     async with MassFlowController(address=address, unit=unit) as flow_controller:
-        await flow_controller.get_data_frame_metrics()
-        await flow_controller.send_command(Command.CANCEL_CLEAR_VALVE)
-        await flow_controller.send_command(Command.SET_TOTALIZER_BATCH,batch_mass)
-        
-        result = await flow_controller.send_command(Command.GET_TOTALIZER_BATCH)
-        print(f'Totaliser Batch: {result}')
-        
-        
-        
-        await flow_controller.send_command(Command.RESET_TOTALIZER)
-        
-        await flow_controller.send_command(Command.CANCEL_CLEAR_VALVE)
-        
-        await flow_controller.send_command(Command.SET_MASS_FLOW_SETPOINT,500)
-        
-        start_time = time.time()
-        
-        while time.time() < start_time + 10:
-            state = await flow_controller.get_state()
-             
-            print(f'Mass Flow Rate: {state.get(FrameParameters.MASS_FLOW_RATE.name)}, '
-                f'Valve Drive: {state.get(FrameParameters.VALVE_DRIVE.name)}, '
-                f'Total Mass: {state.get(FrameParameters.TOTAL_MASS.name)}, '
-                f'Totaliser Batch Remaining: {state.get(FrameParameters.TOTALIZER_BATCH_REMAINING.name)}')
-    
-            if state.get(FrameParameters.TOTALIZER_BATCH_REMAINING.name) == '0.0g':
-                time.sleep(1)
-                state = await flow_controller.get_state()
-                measured_mass = state.get(FrameParameters.TOTAL_MASS.name)
-                print(f'Batch of {measured_mass} out of {batch_mass}g complete')
-                break
-        
-        await flow_controller.send_command(Command.SET_MASS_FLOW_SETPOINT,0)
+        await flow_controller.check_enabled_metrics()
+        await flow_controller.initialize_batch(batch_mass, mass_flow_rate)
+        await monitor_batch(flow_controller, batch_mass)
 
 #asyncio.run(setup_totaliser())
 #asyncio.run(tare_totaliser())
