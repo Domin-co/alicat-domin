@@ -5,6 +5,9 @@ Copyright (C) 2023 NuMat Technologies
 """
 from __future__ import annotations
 
+from enum import Enum
+from typing import List, Optional, Dict , Any
+
 import asyncio
 from typing import Any, ClassVar
 
@@ -557,145 +560,165 @@ class MassFlowController(FlowMeter):
     that the "Input" option is set to "Serial".
     """
 
-
+    
     def __init__(self, address: str='/dev/ttyUSB0', unit: str='A', **kwargs: Any) -> None:
         """Connect this driver with the appropriate USB / serial port.
-
         Args:
             address: The serial port or TCP address:port. Default '/dev/ttyUSB0'.
             unit: The Alicat-specified unit ID, A-Z. Default 'A'.
         """
         FlowMeter.__init__(self, address, unit, **kwargs)
         self.control_point = None
+        self.enabled_metrics = []
         
 
     async def _write_and_read(self, command: str) -> str | None:
-        """Wrap the communicator request.
-
-       
-        """
+        """Wrap the communicator request. """
         self._test_controller_open()
         return await self.hw._write_and_read(command)
     
-           
-    async def set_gas_nitrogen(self) -> None:   #CODA
-        """Set the gas type to Nitrogen."""
+    async def send_command(self, command: Command, *params) -> None:
+        """Send a command to the gas unit."""
+        
+        if command.has_params and not params:
+            raise ValueError(f"Command {command.name} requires input")
+        if not command.has_params and params:
+            raise ValueError(f"Command {command.name} does not accept input")
     
-        command = f'{self.unit}CFG GASID 8'
-        line = await self._write_and_read(command)
-        
+        command_str = f'{self.unit}{command.command_str} {" ".join(map(str, params))}'
+        print(command_str)
+        line = await self._write_and_read(command_str)
+    
         if line == '?':
-            raise OSError("Unable to tare flow.")
-        
+            raise OSError("Unable to execute command.")
+        return line   
+         
     async def tare_mass_flowrate(self) -> None:
         """Tare mass flow."""
         command = f'{self.unit}V'
         line = await self._write_and_read(command)
-
-        if line == '?':
-            raise OSError("Unable to tare flow.")  
-            
-
-    async def get_totalizer_batch_mass(self, batch: int = 1) -> str:
-        """Get the totalizer batch volume.
-
-        Returns:
-            line: Current value of totalizer batch
-        """
-        command = f'{self.unit}TB {batch}'
-        line = await self._write_and_read(command)
-        
-        if line == '?':
-            raise OSError("Unable to read totalizer batch volume.")
-        else:
-            values = line.split(" ")  # type: ignore[union-attr]
-            return f'{values[1]} {values[2]}' # returns 'batch vol' 'units'
-
-    async def set_totalizer_batch_mass(self, batch_mass: float, batch: int = 1) -> None:
-        """Set the totalizer batch mass.
-            
-        """
-        command = f'{self.unit}TB {batch} {batch_mass}'
-        line = await self._write_and_read(command)
+        command = f'{self.unit}'
+        while True:
+            line=await self.get_state()
+            print(line)
+            if line == '?':
+                raise OSError("Unable to tare flow.")
+            if 'ZRO' not in line.get(FrameParameters.STATUS.name):
+                break
+            await asyncio.sleep(1)  
     
-        if line == '?':
-            raise OSError("Unable to set totalizer batch volume. Check if volume is out of range for device.")
+        return line
         
-    async def reset_totaliser(self) -> None:
-        """Reset the totalizer.
-                """
-        command = f'{self.unit}T'
-        line= await self._write_and_read(command)
-        
-        if line == '?':
-            raise OSError("Unable to reset totaliser")
-        
-
-    async def hold_closed(self) -> None:
-        """hold the valve closed
-                """
-        command = f'{self.unit}HC'
-        await self._write_and_read(command)
-
-    async def cancel_clear(self) -> None:
-        """Cancel valve hold and resume closed loop control."""
-        command = f'{self.unit}C'
-        await self._write_and_read(command)
-
-    async def set_flow_setpoint(self, setpoint: float) -> None:
-        """Set the target setpoint for mass flow rate.
-        
-        """
-        command = f'{self.unit}S {setpoint:.2f}'
-        line = await self._write_and_read(command)
-        
-    async def zero_flow_setpoint(self) -> None:
-        """Set the mass flow rate to zero.
-        
-        """
-        command = f'{self.unit}S {0:.2f}'
-        line = await self._write_and_read(command)
-        
-    async def get_state(self) -> None:   
-        
-        """Get the state of the totaliser
-            
-        """
+    async def get_state(self) -> Dict[str, Any]:
+        """Get the state of the totalizer."""
         command = f'{self.unit}'
         line = await self._write_and_read(command)
-        
-        
+
         if line == '?':
-            raise OSError("Unable to set totalizer batch volume. Check if volume is out of range for device.")
-        
+            raise OSError("Unable to get state. Check if the device is responding correctly.")
+
         values = line.split()
-    
-        if len(values) < 7:
-            raise ValueError("Unexpected response format.")
+        #print(values)
+
+        # Map the enabled metrics to their corresponding values
+        state = {}
+        index = 1  # Start from 1 as the first value is the unit identifier
+
+        for metric in self.enabled_metrics:
+            metric_name = metric['name']
+            unit = metric['unit']
+
+            if metric_name == FrameParameters.STATUS.name:
+            # Concatenate all remaining values for STATUS
+                state[metric_name] = ' '.join(values[index:])
+                break
+            else:
+                value = float(values[index])
+                state[metric_name] =f"{value}{unit}"
+                index += 1   
+                
+        #print(state)         
+        return state
+
+
+
+    async def set_data_frame(self, enable: Optional[List[FrameParameters]] = None, disable: Optional[List[FrameParameters]] = None) -> None:
+        """Set the outputted dataframe to include required data.
         
-        # Extract specific values from the response
-        temperature = values[1]
-        mass_flow_rate = values[2]
-        setpoint = values[3]
-        total_flow = values[4]
-        total_time = values[5]
-        totalizer_batch_remaining = values[6]
-        valve_drive = values[7]
-        status_codes = values[8] if len(values) > 8 else None
+        Args:
+            enable: List of bitmask values to enable specific statistics.
+            disable: List of bitmask values to disable specific statistics. 
+        """
+        # Default parameter value with all statistics except for totalizer batch remaining and valve drive enabled
+        parameter_value = 33407
+    
+        if enable:
+            for stat in enable:
+                parameter_value |= stat.value
+
+        if disable:
+            for stat in disable:
+                parameter_value &= ~stat.value
+
+        command = f'{self.unit}CFG DATA {parameter_value}'
+        line = await self._write_and_read(command)
+        if line == '?':
+            raise OSError("Unable to set data frame.")
+         
+        
+    async def get_data_frame_metrics(self) -> None:
+        """Get the current data frame metrics."""
+        command = f'{self.unit}CFG DATA'
+        line = await self._write_and_read(command)
+    
+        parts = line.split()
+        parameter_value = int(parts[-1])
+
+        self.enabled_metrics = [
+        {
+            'name': stat.name,
+            'unit': stat.get_unit()
+        }
+        for stat in FrameParameters if parameter_value & stat.value
+        ]
         
 
+
+class FrameParameters(Enum):
+    DENSITY = (1, 'kg/m^3')
+    TEMPERATURE = (2, 'C')
+    VOLUMETRIC_FLOW_RATE = (4, 'L/h')
+    MASS_FLOW_RATE = (8, 'g/h')
+    SETPOINT = (16, 'g/h')
+    TOTAL_MASS = (32, 'g')
+    TOTAL_TIME = (64, 's')
+    TOTALIZER_BATCH_REMAINING = (128, 'g')
+    VALVE_DRIVE = (256, '')
+    STP_VOLUMETRIC_FLOW_RATE = (512, 'SL/h')
+    STATUS = (32768, '')
+
+    def __init__(self, value, unit):
+        self._value_ = value
+        self.unit = unit
+
+    def get_unit(self):
+        return self.unit
+
+class Command(Enum):
+    STATUS = ("",False)
+    TARE_FLOW = ("V",False)
+    SET_MASS_FLOW_SETPOINT = ("S",True)
+    RESET_TOTALIZER = ("T",False)
+    GET_TOTALIZER_BATCH = ("TB 1",False)
+    SET_TOTALIZER_BATCH = ("TB 1",True)
+    HOLD_VALVE_POSITION = ("H",False)
+    HOLD_VALVE_CLOSED = ("HC",False)
+    HOLD_VALVE_OPEN= ("E",False)
+    CANCEL_CLEAR_VALVE = ("C",False)
+    SET_GAS = ("CFG GASID",True) #8 for nitrogen
+    GET_GAS = ("CFG GASID",False)
+    GET_DATA_FRAME = ("CFG DATA",False)
     
-       
-        return {
-        #"device": device,
-        "temperature": temperature,
-        "mass_flow_rate": mass_flow_rate,
-        "setpoint": setpoint,
-        "total_mass": total_flow,
-        "total_time": total_time,
-        "mass_remaining": totalizer_batch_remaining,
-        "valve_drive": valve_drive,
-        "status_codes": status_codes,
-        #"status_descriptions": status_descriptions_list
-        }
-               
+    def __init__(self, command_str, has_params):
+        self.command_str = command_str
+        self.has_params = has_params

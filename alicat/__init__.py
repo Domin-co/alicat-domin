@@ -5,7 +5,7 @@ Copyright (C) 2023 NuMat Technologies
 """
 from typing import Any
 
-from alicat.driver import FlowController, FlowMeter, MassFlowController  # noqa
+from alicat.driver import FlowController, FlowMeter, MassFlowController, FrameParameters, Command  # noqa
 
 
 def command_line(args: Any = None) -> None:
