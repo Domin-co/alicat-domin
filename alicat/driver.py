@@ -592,24 +592,12 @@ class MassFlowController(FlowMeter):
         if line == '?':
             raise OSError("Unable to execute command.")
         return line   
-         
-    async def tare_mass_flowrate(self) -> None:
-        """Tare mass flow."""
-        command = f'{self.unit}V'
-        line = await self._write_and_read(command)
-        while True:
-            line=await self.get_state()
-            print(line)
-            if line == '?':
-                raise OSError("Unable to tare flow.")
-            if 'ZRO' not in line.get(FrameParameters.STATUS.name):
-                break
-            await asyncio.sleep(1)  
-    
-        return line
+        
         
     async def get_state(self) -> Dict[str, Any]:
         """Get the state of the totalizer."""
+        
+        await self.check_enabled_metrics()
         command = f'{self.unit}'
         line = await self._write_and_read(command)
 
@@ -635,8 +623,7 @@ class MassFlowController(FlowMeter):
                 value = float(values[index])
                 state[metric_name] =f"{value}{unit}"
                 index += 1   
-                
-        #print(state)         
+                         
         return state
 
 
@@ -686,12 +673,7 @@ class MassFlowController(FlowMeter):
         if not any(metric['name'] == FrameParameters.TOTALIZER_BATCH_REMAINING.name for metric in self.enabled_metrics):
             raise ValueError("TOTALIZER_BATCH_REMAINING is not in enabled metrics, run setup_totaliser() first")
         
-    
-    async def initialize_batch(self, batch_mass, mass_flow_rate):
-        await self.send_command(Command.CANCEL_CLEAR_VALVE)
-        await self.send_command(Command.SET_TOTALIZER_BATCH, batch_mass)
-        await self.send_command(Command.RESET_TOTALIZER)
-        await self.send_command(Command.SET_MASS_FLOW_SETPOINT, mass_flow_rate)
+
 
 class FrameParameters(Enum):
     DENSITY = (1, 'kg/m^3')
