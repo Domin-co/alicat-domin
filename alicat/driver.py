@@ -597,7 +597,6 @@ class MassFlowController(FlowMeter):
         """Tare mass flow."""
         command = f'{self.unit}V'
         line = await self._write_and_read(command)
-        command = f'{self.unit}'
         while True:
             line=await self.get_state()
             print(line)
@@ -716,7 +715,7 @@ class FrameParameters(Enum):
 
 class Command(Enum):
     STATUS = ("",False)
-    TARE_FLOW = ("V",False)
+    TARE_MASS_FLOW = ("V",False)
     SET_MASS_FLOW_SETPOINT = ("S",True)
     RESET_TOTALIZER = ("T",False)
     GET_TOTALIZER_BATCH = ("TB 1",False)
