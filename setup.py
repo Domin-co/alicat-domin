@@ -5,7 +5,7 @@ with open('README.md') as in_file:
     long_description = in_file.read()
 
 setup(
-    name="alicat",
+    name="alicat-domin",
     version="0.6.2",
     description="Python driver for Alicat mass flow controllers.",
     long_description=long_description,
@@ -24,7 +24,7 @@ setup(
                 'pytest-cov>=5,<6',
                 'pytest-asyncio>=0.23.5',
                 'pytest-xdist==3.*',
-                'ruff==0.6.3',
+                'ruff==0.6.8',
                 'mypy==1.11.2',
                 'types-pyserial',
             ],

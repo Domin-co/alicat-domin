@@ -5,6 +5,9 @@ Copyright (C) 2023 NuMat Technologies
 """
 from __future__ import annotations
 
+from enum import Enum
+from typing import List, Optional, Dict , Any
+
 import asyncio
 from typing import Any, ClassVar
 
@@ -543,3 +546,170 @@ class FlowController(FlowMeter):
         if value != reg:
             raise OSError("Could not set control point.")
         self.control_point = point
+
+class MassFlowController(FlowMeter):
+    """Python driver for Alicat CODA Flow Controllers.
+
+    [Reference](http://www.alicat.com/products/mass-flow-meters-and-
+    controllers/mass-flow-controllers/).
+
+    This communicates with the flow controller over a USB or RS-232/RS-485
+    connection using pyserial.
+
+    To set up your Alicat mass flow controller, power on the device and make sure
+    that the "Input" option is set to "Serial".
+    """
+
+    
+    def __init__(self, address: str='/dev/ttyUSB0', unit: str='A', **kwargs: Any) -> None:
+        """Connect this driver with the appropriate USB / serial port.
+        Args:
+            address: The serial port or TCP address:port. Default '/dev/ttyUSB0'.
+            unit: The Alicat-specified unit ID, A-Z. Default 'A'.
+        """
+        FlowMeter.__init__(self, address, unit, **kwargs)
+        self.control_point = None
+        self.enabled_metrics = []
+        
+
+    async def _write_and_read(self, command: str) -> str | None:
+        """Wrap the communicator request. """
+        self._test_controller_open()
+        return await self.hw._write_and_read(command)
+    
+    async def send_command(self, command: Command, *params) -> None:
+        """Send a command to the gas unit."""
+        
+        if command.has_params and not params:
+            raise ValueError(f"Command {command.name} requires input")
+        if not command.has_params and params:
+            raise ValueError(f"Command {command.name} does not accept input")
+    
+        command_str = f'{self.unit}{command.command_str} {" ".join(map(str, params))}'
+        print(command_str)
+        line = await self._write_and_read(command_str)
+    
+        if line == '?':
+            raise OSError("Unable to execute command.")
+        return line   
+        
+        
+    async def get_state(self) -> Dict[str, Any]:
+        """Get the state of the totalizer."""
+        
+        await self.check_enabled_metrics()
+        command = f'{self.unit}'
+        line = await self._write_and_read(command)
+
+        if line == '?':
+            raise OSError("Unable to get state. Check if the device is responding correctly.")
+
+        values = line.split()
+        #print(values)
+
+        # Map the enabled metrics to their corresponding values
+        state = {}
+        index = 1  # Start from 1 as the first value is the unit identifier
+
+        for metric in self.enabled_metrics:
+            metric_name = metric['name']
+            unit = metric['unit']
+
+            if metric_name == FrameParameters.STATUS.name:
+            # Concatenate all remaining values for STATUS
+                state[metric_name] = ' '.join(values[index:])
+                break
+            else:
+                value = float(values[index])
+                state[metric_name] =f"{value}{unit}"
+                index += 1   
+                         
+        return state
+
+
+
+    async def set_data_frame(self, enable: Optional[List[FrameParameters]] = None, disable: Optional[List[FrameParameters]] = None) -> None:
+        """Set the outputted dataframe to include required data.
+        
+        Args:
+            enable: List of bitmask values to enable specific statistics.
+            disable: List of bitmask values to disable specific statistics. 
+        """
+        # Default parameter value with all statistics except for totalizer batch remaining and valve drive enabled
+        parameter_value = 33407
+    
+        if enable:
+            for stat in enable:
+                parameter_value |= stat.value
+
+        if disable:
+            for stat in disable:
+                parameter_value &= ~stat.value
+
+        command = f'{self.unit}CFG DATA {parameter_value}'
+        line = await self._write_and_read(command)
+        if line == '?':
+            raise OSError("Unable to set data frame.")
+         
+        
+    async def get_data_frame_metrics(self) -> None:
+        """Get the current data frame metrics."""
+        command = f'{self.unit}CFG DATA'
+        line = await self._write_and_read(command)
+    
+        parts = line.split()
+        parameter_value = int(parts[-1])
+
+        self.enabled_metrics = [
+        {
+            'name': stat.name,
+            'unit': stat.get_unit()
+        }
+        for stat in FrameParameters if parameter_value & stat.value
+        ]
+        
+    async def check_enabled_metrics(self):
+        await self.get_data_frame_metrics()
+        if not any(metric['name'] == FrameParameters.TOTALIZER_BATCH_REMAINING.name for metric in self.enabled_metrics):
+            raise ValueError("TOTALIZER_BATCH_REMAINING is not in enabled metrics, run setup_totaliser() first")
+        
+
+
+class FrameParameters(Enum):
+    DENSITY = (1, 'kg/m^3')
+    TEMPERATURE = (2, 'C')
+    VOLUMETRIC_FLOW_RATE = (4, 'L/h')
+    MASS_FLOW_RATE = (8, 'g/h')
+    SETPOINT = (16, 'g/h')
+    TOTAL_MASS = (32, 'g')
+    TOTAL_TIME = (64, 's')
+    TOTALIZER_BATCH_REMAINING = (128, 'g')
+    VALVE_DRIVE = (256, '')
+    STP_VOLUMETRIC_FLOW_RATE = (512, 'SL/h')
+    STATUS = (32768, '')
+
+    def __init__(self, value, unit):
+        self._value_ = value
+        self.unit = unit
+
+    def get_unit(self):
+        return self.unit
+
+class Command(Enum):
+    STATUS = ("",False)
+    TARE_MASS_FLOW = ("V",False)
+    SET_MASS_FLOW_SETPOINT = ("S",True)
+    RESET_TOTALIZER = ("T",False)
+    GET_TOTALIZER_BATCH = ("TB 1",False)
+    SET_TOTALIZER_BATCH = ("TB 1",True)
+    HOLD_VALVE_POSITION = ("H",False)
+    HOLD_VALVE_CLOSED = ("HC",False)
+    HOLD_VALVE_OPEN= ("E",False)
+    CANCEL_CLEAR_VALVE = ("C",False)
+    SET_GAS = ("CFG GASID",True) #8 for nitrogen
+    GET_GAS = ("CFG GASID",False)
+    GET_DATA_FRAME = ("CFG DATA",False)
+    
+    def __init__(self, command_str, has_params):
+        self.command_str = command_str
+        self.has_params = has_params
