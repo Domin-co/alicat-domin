@@ -1,0 +1,10 @@
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish-library-version:
+    uses: Domin-co/ci-workflows/.github/workflows/python-server-update-index.yml@master
+    with:
+      python-version: '3.8.0'
+    secrets: inherit

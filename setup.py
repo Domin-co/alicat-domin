@@ -1,49 +1,18 @@
-"""Install parameters for CLI and python import."""
-from setuptools import setup
+"""Setup file for the package."""
 
-with open('README.md') as in_file:
-    long_description = in_file.read()
+from setuptools import setup, find_packages
+
+with open("requirements.txt") as req_file:
+    install_requires = req_file.read().splitlines()
+
+with open("requirements_test.txt", "r") as req_file:
+    test_requires = req_file.read().splitlines()
 
 setup(
-    name="alicat",
-    version="0.6.2",
-    description="Python driver for Alicat mass flow controllers.",
-    long_description=long_description,
-    long_description_content_type='text/markdown',
-    url="https://github.com/numat/alicat/",
-    author="Patrick Fuller",
-    author_email="pat@numat-tech.com",
-    maintainer="Alex Ruddick",
-    maintainer_email="alex@ruddick.tech",
-    packages=["alicat"],
-    package_data={"alicat": ["py.typed"]},
-    install_requires=["pyserial"],
+    packages=find_packages(exclude=["tests", "tests.*"]),
+    install_requires=install_requires,
+    url="https://github.com/Domin-co/suspension-can-interface",
     extras_require={
-            'test': [
-                'pytest>=8,<9',
-                'pytest-cov>=5,<6',
-                'pytest-asyncio>=0.23.5',
-                'pytest-xdist==3.*',
-                'ruff==0.6.3',
-                'mypy==1.11.2',
-                'types-pyserial',
-            ],
-        },
-    entry_points={
-        "console_scripts": [("alicat = alicat:command_line")]
-    },
-    license="GPLv2",
-    classifiers=[
-        "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
-        "Development Status :: 4 - Beta",
-        "Natural Language :: English",
-        "Programming Language :: Python",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-        "Topic :: Scientific/Engineering :: Human Machine Interfaces",
-    ]
+        "test": test_requires,
+    }
 )

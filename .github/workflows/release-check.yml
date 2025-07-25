@@ -1,0 +1,29 @@
+# github action for pull requests that target master
+# check we have a semver (patch, minor, major) as a label
+
+name: Release Version Type Check
+
+on:
+  pull_request:
+    types: [opened, edited, labeled]
+    branches:
+      - domin/master
+
+jobs:
+  label_check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install jq
+        run: sudo apt-get install jq
+
+      - name: Check for semver label
+        id: semver_label
+        run: |
+          LABEL_NAMES=$(echo '${{ toJson(github.event.pull_request.labels.*.name) }}' | jq -r '.[]')
+          echo "Labels: $LABEL_NAMES"
+          if [[ -z $(echo "$LABEL_NAMES" | grep -iE 'patch|minor|major') ]]; then
+          echo "No semver label found"
+          exit 1
+          else
+          echo "Semver label found"
+          fi

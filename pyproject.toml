@@ -1,0 +1,29 @@
+# Build toml file for the package in combination with the setup.py file
+[project]
+name = "domin-alicat"
+version = "0.0.0"
+description = "Domin fork of alicat package with added support for CODA device"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Jon Mullen"}, {email = "jonathan.mullen@domin.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent"
+]
+dynamic = ["dependencies"]
+
+[project.urls]
+Homepage = "https://github.com/Domin-co/domin-alicat"
+Source = "https://github.com/Domin-co/domin-alicat.git"
+Changelog = "https://github.com/Domin-co/domin-alicat/blob/master/CHANGELOG.md"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src"]
+exclude = ["tests"]
